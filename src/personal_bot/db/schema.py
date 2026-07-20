@@ -49,7 +49,7 @@ def initialize_database_schema(database: Database) -> None:
             owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             parent_id INTEGER REFERENCES categories(id) ON DELETE RESTRICT,
             name TEXT NOT NULL,
-            icon TEXT NOT NULL,
+            icon TEXT NOT NULL DEFAULT '📁',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
