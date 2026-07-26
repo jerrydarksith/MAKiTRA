@@ -96,3 +96,27 @@ class UserRepository:
             )
             for user_row in user_rows
         ]
+    
+    def list_active_users(self) -> list[User]:
+        user_rows = self._database.execute(
+            """
+            SELECT id, telegram_id, username, first_name, last_name, role, status
+            FROM users
+            WHERE status = ?
+            ORDER BY first_name COLLATE NOCASE
+            """,
+            (UserStatus.ACTIVE.value,),
+        ).fetchall()
+
+        return [
+            User(
+                id=user_row["id"],
+                telegram_id=user_row["telegram_id"],
+                username=user_row["username"],
+                first_name=user_row["first_name"],
+                last_name=user_row["last_name"],
+                role=UserRole(user_row["role"]),
+                status=UserStatus(user_row["status"]),
+            )
+            for user_row in user_rows
+        ]

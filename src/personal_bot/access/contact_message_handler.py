@@ -5,8 +5,11 @@ from personal_bot.access.access_request_notification_sender import (
     AccessRequestNotificationSender,
 )
 from personal_bot.access.service import AccessService
-from personal_bot.core.enums import ContactRegistrationResult
-from personal_bot.telegram.menus.main_menu import get_main_menu_message
+from personal_bot.core.enums import ContactRegistrationResult, UserRole
+from personal_bot.telegram.menus.main_menu import (
+    get_main_menu_keyboard,
+    get_main_menu_message,
+)
 
 
 class ContactMessageHandler:
@@ -52,9 +55,11 @@ class ContactMessageHandler:
             registration_outcome.result
             is ContactRegistrationResult.FIRST_SUPER_ADMIN_CREATED
         ):
-            await message.reply_text(
-                "Вас зареєстровано як Super Admin.\n\n"
-                f"{get_main_menu_message()}"
+            await message.reply_photo(
+                "https://telegram.org/img/t_logo.png",
+                caption="Вас зареєстровано як Super Admin.\n\n"
+                f"{get_main_menu_message()}",
+                reply_markup=get_main_menu_keyboard(user_role=UserRole.SUPER_ADMIN),
             )
             return
 
@@ -62,7 +67,13 @@ class ContactMessageHandler:
             registration_outcome.result
             is ContactRegistrationResult.USER_ALREADY_REGISTERED
         ):
-            await message.reply_text(get_main_menu_message())
+            user = self._access_service.find_user_by_telegram_id(telegram_user.id)
+            role = user.role if user is not None else None
+            await message.reply_photo(
+                "https://telegram.org/img/t_logo.png",
+                caption=get_main_menu_message(),
+                reply_markup=get_main_menu_keyboard(role),
+            )
             return
 
         if (

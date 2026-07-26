@@ -3,7 +3,10 @@ from telegram.ext import ContextTypes
 
 from personal_bot.access.service import AccessService
 from personal_bot.core.enums import UserStatus
-from personal_bot.telegram.menus.main_menu import get_main_menu_message
+from personal_bot.telegram.menus.main_menu import (
+    get_main_menu_keyboard,
+    get_main_menu_message,
+)
 
 
 class StartCommandHandler:
@@ -32,7 +35,11 @@ class StartCommandHandler:
             return
 
         if user.status is UserStatus.ACTIVE:
-            await message.reply_text(get_main_menu_message())
+            await message.reply_photo(
+                "https://telegram.org/img/t_logo.png",
+                caption=get_main_menu_message(),
+                reply_markup=get_main_menu_keyboard(user.role),
+            )
             return
 
         await message.reply_text("Ваш доступ до бота заблоковано.")
