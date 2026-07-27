@@ -5,6 +5,7 @@ import traceback
 from personal_bot.folders.service import FoldersService
 from personal_bot.telegram.menus.folders_menu import (
     get_folder_delete_confirmation_keyboard,
+    get_folder_menu_keyboard,
     get_folder_navigation_keyboard,
     get_record_type_keyboard,
 )
@@ -30,6 +31,7 @@ class FoldersMessageFilter(filters.MessageFilter):
             "➕ Новий запис",
             "📁 Створити папку",
             "➕ Створити папку",
+            "⚙️ Дії",
             "✏️ Перейменувати папку",
             "🗑️ Видалити папку",
             "🗑 Видалити папку",
@@ -37,6 +39,10 @@ class FoldersMessageFilter(filters.MessageFilter):
             "❌ Ні",
             "⬅️ Назад",
             "⬅ Назад",
+            "⬅️ До папки",
+            "◀️ Попередня",
+            "▶️ Наступна",
+            "🏠 Головне меню",
         }
 
         if text == "⬅️ Назад":
@@ -64,6 +70,7 @@ class FoldersMessageHandler:
         self._records_service = records_service
         self._record_registry = record_registry
         self._folder_session_for_user: dict[int, int | None] = {}
+        self._folder_page_for_user: dict[int, int] = {}
         self._pending_action_for_user: dict[int, str] = {}
         self._selected_record_type_for_user: dict[int, str] = {}
 
@@ -73,16 +80,24 @@ class FoldersMessageHandler:
     def is_active_session(self, user_id: int) -> bool:
         return user_id in self._folder_session_for_user
 
-    def _start_folder_session(self, user_id: int, folder_id: int | None = None) -> None:
+    def _start_folder_session(self, user_id: int, folder_id: int | None = None, page: int = 0) -> None:
         self._folder_session_for_user[user_id] = folder_id
+        self._folder_page_for_user[user_id] = page
 
     def _end_folder_session(self, user_id: int) -> None:
         self._folder_session_for_user.pop(user_id, None)
+        self._folder_page_for_user.pop(user_id, None)
         self._pending_action_for_user.pop(user_id, None)
         self._selected_record_type_for_user.pop(user_id, None)
 
     def _current_folder_id(self, user_id: int) -> int | None:
         return self._folder_session_for_user.get(user_id)
+
+    def _current_page(self, user_id: int) -> int:
+        return self._folder_page_for_user.get(user_id, 0)
+
+    def _set_current_page(self, user_id: int, page: int) -> None:
+        self._folder_page_for_user[user_id] = page
 
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         del context
@@ -99,7 +114,7 @@ class FoldersMessageHandler:
         user_id = telegram_user.id
 
         if text == "📝 Записи":
-            self._start_folder_session(user_id, None)
+            self._start_folder_session(user_id, None, page=0)
             self._pending_action_for_user.pop(user_id, None)
             await self._show_folder_list(message, user_id)
             return
@@ -111,6 +126,23 @@ class FoldersMessageHandler:
                 "Введіть назву нової папки.",
                 reply_markup=self._create_back_keyboard(),
             )
+            return
+
+        if text == "⚙️ Дії":
+            current_folder_id = self._current_folder_id(user_id)
+            is_root = current_folder_id is None
+            await message.reply_text(
+                self._build_current_folder_message(user_id),
+                reply_markup=get_folder_menu_keyboard(is_root=is_root),
+            )
+            return
+
+        if text == "⬅️ До папки":
+            current_folder_id = self._current_folder_id(user_id)
+            if current_folder_id is None:
+                await self._show_folder_list(message, user_id)
+            else:
+                await self._show_folder_page(message, user_id, current_folder_id)
             return
 
         if text == "➕ Новий запис":
@@ -146,8 +178,44 @@ class FoldersMessageHandler:
                     )
                     return
 
-                self._start_folder_session(user_id, None)
+                owner_id = self._get_owner_id_for_user(user_id)
+                if owner_id is None:
+                    self._end_folder_session(user_id)
+                    return
+
+                current_folder = self._folders_service.get_folder(current_folder_id, owner_id)
+                if current_folder is None:
+                    self._start_folder_session(user_id, None, page=0)
+                    await self._show_folder_list(message, user_id)
+                    return
+
+                parent_folder_id = current_folder.parent_id
+                if parent_folder_id is None:
+                    self._start_folder_session(user_id, None, page=0)
+                    await self._show_folder_list(message, user_id)
+                else:
+                    self._start_folder_session(user_id, parent_folder_id, page=0)
+                    await self._show_folder_page(message, user_id, parent_folder_id)
+                return
+
+        if text in {"◀️ Попередня", "▶️ Наступна"} and self.is_active_session(user_id):
+            current_page = self._current_page(user_id)
+            next_page = current_page - 1 if text == "◀️ Попередня" else current_page + 1
+            self._set_current_page(user_id, max(0, next_page))
+            current_folder_id = self._current_folder_id(user_id)
+            if current_folder_id is None:
                 await self._show_folder_list(message, user_id)
+            else:
+                await self._show_folder_page(message, user_id, current_folder_id)
+            return
+
+        if text == "🏠 Головне меню":
+            if self.is_active_session(user_id):
+                self._end_folder_session(user_id)
+                await message.reply_text(
+                    get_main_menu_message(),
+                    reply_markup=get_main_menu_keyboard(self._get_user_role(telegram_user)),
+                )
                 return
 
         if user_id in self._pending_action_for_user:
@@ -236,7 +304,7 @@ class FoldersMessageHandler:
                 except Exception:
                     traceback.print_exc()
                     raise
-                self._start_folder_session(user_id, self._current_folder_id(user_id))
+                self._start_folder_session(user_id, self._current_folder_id(user_id), page=0)
                 await self._show_folder_page(message, user_id, self._current_folder_id(user_id))
                 return
 
@@ -284,7 +352,7 @@ class FoldersMessageHandler:
             )
             if folder is None:
                 return
-            self._start_folder_session(user_id, folder.id)
+            self._start_folder_session(user_id, folder.id, page=0)
             self._pending_action_for_user.pop(user_id, None)
             await self._show_folder_page(message, user_id, folder.id)
             return
@@ -372,12 +440,15 @@ class FoldersMessageHandler:
             return
 
         owner_id = user.id
+        current_page = self._current_page(user_id)
 
         await message.reply_text(
-            self._folders_service.build_folder_list_message(owner_id),
+            self._build_root_message(),
             reply_markup=get_folder_navigation_keyboard(
                 self._folders_service.list_root_folders(owner_id),
                 [],
+                is_root=True,
+                page=current_page,
             ),
         )
 
@@ -404,13 +475,50 @@ class FoldersMessageHandler:
             self._end_folder_session(user_id)
             return
 
-        self._start_folder_session(user_id, folder.id)
+        current_page = self._current_page(user_id)
+        self._start_folder_session(user_id, folder.id, page=current_page)
         child_folders = self._folders_service.list_child_folders(folder.id, owner_id)
         records = self._records_service.list_records(folder.id, owner_id)
         await message.reply_text(
-            self._folders_service.build_folder_page_message(folder),
-            reply_markup=get_folder_navigation_keyboard(child_folders, records),
+            self._build_folder_message(folder),
+            reply_markup=get_folder_navigation_keyboard(
+                child_folders,
+                records,
+                is_root=False,
+                page=current_page,
+            ),
         )
+
+    def _build_root_message(self) -> str:
+        return "🧭 Мої записи"
+
+    def _build_current_folder_message(self, user_id: int) -> str:
+        current_folder_id = self._current_folder_id(user_id)
+        if current_folder_id is None:
+            return self._build_root_message()
+
+        folder = self._folders_service.get_folder(current_folder_id, self._get_owner_id_for_user(user_id))
+        if folder is None:
+            return self._build_root_message()
+
+        return self._build_folder_message(folder)
+
+    def _build_folder_message(self, folder) -> str:
+        path_components = [folder.name]
+        parent_id = folder.parent_id
+        while parent_id is not None:
+            parent_folder = self._folders_service.get_folder(parent_id, folder.owner_user_id)
+            if parent_folder is None:
+                break
+            path_components.append(parent_folder.name)
+            parent_id = parent_folder.parent_id
+
+        path_components.reverse()
+        return f"🧭 Мої записи / {' / '.join(path_components)}"
+
+    def _get_owner_id_for_user(self, user_id: int) -> int | None:
+        user = self._users_service.find_user_by_telegram_id(user_id)
+        return user.id if user is not None else None
 
     def _get_user_role(self, from_user) -> None:
         if from_user is None:
