@@ -23,6 +23,12 @@ def get_folder_menu_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+def get_record_type_keyboard(type_codes: tuple[str, ...]) -> ReplyKeyboardMarkup:
+    buttons = [[KeyboardButton(type_code)] for type_code in type_codes]
+    buttons.append([KeyboardButton("⬅ Назад")])
+    return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
+
+
 def get_folder_delete_confirmation_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [

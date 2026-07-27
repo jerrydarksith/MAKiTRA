@@ -33,6 +33,27 @@ class FakeUsersService:
         return SimpleNamespace(role=UserRole.SUPER_ADMIN)
 
 
+class FakeRecordsService:
+    def __init__(self) -> None:
+        self.created_records: list[dict[str, object]] = []
+
+    def create_record(self, **kwargs) -> None:
+        self.created_records.append(kwargs)
+
+    def list_records(self, folder_id: int, owner_user_id: int) -> list[SimpleNamespace]:
+        return [
+            SimpleNamespace(name=record["name"])
+            for record in self.created_records
+            if record["folder_id"] == folder_id
+            and record["owner_user_id"] == owner_user_id
+        ]
+
+
+class FakeRecordRegistry:
+    def list_available_types(self) -> tuple[str, ...]:
+        return ("short_text",)
+
+
 class FoldersHandlerMVPTTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.temporary_directory = TemporaryDirectory()
@@ -54,7 +75,13 @@ class FoldersHandlerMVPTTests(unittest.IsolatedAsyncioTestCase):
 
         self.folder_repository = FolderRepository(self.database)
         self.folders_service = FoldersService(self.folder_repository)
-        self.handler = FoldersMessageHandler(self.folders_service, FakeUsersService())
+        self.records_service = FakeRecordsService()
+        self.handler = FoldersMessageHandler(
+            self.folders_service,
+            FakeUsersService(),
+            self.records_service,
+            FakeRecordRegistry(),
+        )
 
     async def asyncTearDown(self) -> None:
         self.database.close()
@@ -137,3 +164,32 @@ class FoldersHandlerMVPTTests(unittest.IsolatedAsyncioTestCase):
         await self.handler.handle(back_update, None)
 
         self.assertIn("📝 Мої записи", back_update.effective_message.replies[-1]["text"])
+
+    async def test_create_short_text_record_flow(self) -> None:
+        self.folders_service.create_folder(owner_user_id=1, name="Робота")
+
+        await self.handler.handle(self._make_update("📁 Робота"), None)
+        type_menu_update = self._make_update("➕ Новий запис")
+        await self.handler.handle(type_menu_update, None)
+
+        keyboard = type_menu_update.effective_message.replies[-1]["reply_markup"]
+        button_labels = [button.text for row in keyboard.keyboard for button in row]
+        self.assertIn("short_text", button_labels)
+
+        await self.handler.handle(self._make_update("short_text"), None)
+        text_update = self._make_update("Мій запис")
+        await self.handler.handle(text_update, None)
+
+        self.assertEqual(len(self.records_service.created_records), 1)
+        self.assertEqual(
+            self.records_service.created_records[0],
+            {
+                "owner_user_id": 1,
+                "folder_id": 1,
+                "type_code": "short_text",
+                "name": "Мій запис",
+                "data": {"value": "Мій запис"},
+            },
+        )
+        self.assertIn("📝 Записи:", text_update.effective_message.replies[-1]["text"])
+        self.assertIn("Мій запис", text_update.effective_message.replies[-1]["text"])

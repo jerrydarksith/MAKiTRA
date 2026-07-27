@@ -6,8 +6,11 @@ from personal_bot.telegram.menus.folders_menu import (
     get_folder_delete_confirmation_keyboard,
     get_folder_list_keyboard,
     get_folder_menu_keyboard,
+    get_record_type_keyboard,
 )
 from personal_bot.telegram.menus.main_menu import get_main_menu_keyboard, get_main_menu_message
+from personal_bot.records.registry import RecordRegistry
+from personal_bot.records.service import RecordsService
 from personal_bot.users.service import UsersService
 
 
@@ -24,6 +27,7 @@ class FoldersMessageFilter(filters.MessageFilter):
         user_id = message.from_user.id
         command_texts = {
             "📝 Записи",
+            "➕ Новий запис",
             "➕ Створити папку",
             "✏️ Перейменувати папку",
             "🗑 Видалити папку",
@@ -48,11 +52,16 @@ class FoldersMessageHandler:
         self,
         folders_service: FoldersService,
         users_service: UsersService,
+        records_service: RecordsService,
+        record_registry: RecordRegistry,
     ) -> None:
         self._folders_service = folders_service
         self._users_service = users_service
+        self._records_service = records_service
+        self._record_registry = record_registry
         self._folder_session_for_user: dict[int, int | None] = {}
         self._pending_action_for_user: dict[int, str] = {}
+        self._selected_record_type_for_user: dict[int, str] = {}
 
     def get_filter(self) -> FoldersMessageFilter:
         return FoldersMessageFilter(self)
@@ -66,6 +75,7 @@ class FoldersMessageHandler:
     def _end_folder_session(self, user_id: int) -> None:
         self._folder_session_for_user.pop(user_id, None)
         self._pending_action_for_user.pop(user_id, None)
+        self._selected_record_type_for_user.pop(user_id, None)
 
     def _current_folder_id(self, user_id: int) -> int | None:
         return self._folder_session_for_user.get(user_id)
@@ -99,9 +109,22 @@ class FoldersMessageHandler:
             )
             return
 
+        if text == "➕ Новий запис":
+            if self._current_folder_id(user_id) is None:
+                return
+            self._pending_action_for_user[user_id] = "select_record_type"
+            await message.reply_text(
+                "Оберіть тип запису.",
+                reply_markup=get_record_type_keyboard(
+                    self._record_registry.list_available_types()
+                ),
+            )
+            return
+
         if text == "⬅ Назад":
             if user_id in self._pending_action_for_user:
                 self._pending_action_for_user.pop(user_id, None)
+                self._selected_record_type_for_user.pop(user_id, None)
                 current_folder_id = self._current_folder_id(user_id)
                 if current_folder_id is not None:
                     await self._show_folder_page(message, user_id, current_folder_id)
@@ -125,6 +148,40 @@ class FoldersMessageHandler:
 
         if user_id in self._pending_action_for_user:
             action = self._pending_action_for_user[user_id]
+            if action == "select_record_type":
+                if text not in self._record_registry.list_available_types():
+                    await message.reply_text("Оберіть тип запису зі списку.")
+                    return
+                self._selected_record_type_for_user[user_id] = text
+                self._pending_action_for_user[user_id] = "enter_record_text"
+                await message.reply_text(
+                    "Введіть текст запису.",
+                    reply_markup=self._create_back_keyboard(),
+                )
+                return
+
+            if action == "enter_record_text":
+                folder_id = self._current_folder_id(user_id)
+                type_code = self._selected_record_type_for_user.get(user_id)
+                if folder_id is None or type_code is None:
+                    self._end_folder_session(user_id)
+                    return
+                try:
+                    self._records_service.create_record(
+                        owner_user_id=user_id,
+                        folder_id=folder_id,
+                        type_code=type_code,
+                        name=text,
+                        data={"value": text},
+                    )
+                except ValueError as error:
+                    await message.reply_text(str(error))
+                    return
+                self._pending_action_for_user.pop(user_id, None)
+                self._selected_record_type_for_user.pop(user_id, None)
+                await self._show_folder_page(message, user_id, folder_id)
+                return
+
             if action == "create":
                 folder_name = text.strip()
                 if folder_name:
@@ -153,10 +210,7 @@ class FoldersMessageHandler:
                 return
             self._start_folder_session(user_id, folder.id)
             self._pending_action_for_user.pop(user_id, None)
-            await message.reply_text(
-                self._folders_service.build_folder_page_message(folder),
-                reply_markup=get_folder_menu_keyboard(),
-            )
+            await self._show_folder_page(message, user_id, folder.id)
             return
 
         if text == "✏️ Перейменувати папку":
@@ -223,10 +277,20 @@ class FoldersMessageHandler:
             return
 
         self._start_folder_session(user_id, folder.id)
+        records = self._records_service.list_records(folder.id, user_id)
         await message.reply_text(
-            self._folders_service.build_folder_page_message(folder),
+            self._build_folder_page_message(folder.name, [record.name for record in records]),
             reply_markup=get_folder_menu_keyboard(),
         )
+
+    @staticmethod
+    def _build_folder_page_message(folder_name: str, record_names: list[str]) -> str:
+        if not record_names:
+            return f"📁 {folder_name}\n\nПапка порожня."
+
+        lines = [f"📁 {folder_name}", "", "📝 Записи:"]
+        lines.extend(f"• {record_name}" for record_name in record_names)
+        return "\n".join(lines)
 
     def _get_user_role(self, from_user) -> None:
         if from_user is None:
