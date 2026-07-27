@@ -18,6 +18,8 @@ from personal_bot.access.service import AccessService
 from personal_bot.access.start_command_handler import StartCommandHandler
 from personal_bot.categories.callback_handlers import CategoriesCallbackHandler, CategoriesMessageHandler
 from personal_bot.categories.service import CategoriesService
+from personal_bot.folders.callback_handlers import FoldersMessageHandler
+from personal_bot.folders.service import FoldersService
 from personal_bot.objects.callback_handlers import ObjectsMessageHandler
 from personal_bot.objects.service import ObjectsService
 from personal_bot.users.callback_handlers import UsersCallbackHandler, UsersMessageHandler
@@ -29,6 +31,7 @@ def create_telegram_application(
     access_service: AccessService,
     users_service: UsersService,
     categories_service: CategoriesService,
+    folders_service: FoldersService,
     objects_service: ObjectsService,
 ) -> Application:
     telegram_application = ApplicationBuilder().token(telegram_bot_token).build()
@@ -42,6 +45,7 @@ def create_telegram_application(
     users_callback_handler = UsersCallbackHandler(users_service)
     categories_message_handler = CategoriesMessageHandler(categories_service)
     categories_callback_handler = CategoriesCallbackHandler(categories_service)
+    folders_message_handler = FoldersMessageHandler(folders_service, users_service)
     objects_message_handler = ObjectsMessageHandler(objects_service)
     telegram_application.add_handler(
         CommandHandler("start", start_command_handler.handle)

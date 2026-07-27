@@ -4,9 +4,11 @@ from personal_bot.config import load_application_settings
 from personal_bot.db.database import Database
 from personal_bot.db.repositories.access_request_repository import AccessRequestRepository
 from personal_bot.db.repositories.category_repository import CategoryRepository
+from personal_bot.db.repositories.folder_repository import FolderRepository
 from personal_bot.db.repositories.settings_repository import SettingsRepository
 from personal_bot.db.repositories.user_repository import UserRepository
 from personal_bot.db.schema import initialize_database_schema
+from personal_bot.folders.service import FoldersService
 from personal_bot.objects.service import ObjectsService
 from personal_bot.telegram.application import create_telegram_application
 from personal_bot.users.service import UsersService

@@ -22,7 +22,7 @@ class DatabaseSchemaTests(unittest.TestCase):
 
         table_names = {table_row["name"] for table_row in table_rows}
         self.assertTrue(
-            {"users", "access_requests", "user_settings", "categories"}
+            {"users", "access_requests", "user_settings", "categories", "folders"}
             .issubset(table_names)
         )
 

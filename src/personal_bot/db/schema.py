@@ -61,6 +61,24 @@ def initialize_database_schema(database: Database) -> None:
         CREATE UNIQUE INDEX IF NOT EXISTS unique_child_category_name
             ON categories(owner_user_id, parent_id, name)
             WHERE parent_id IS NOT NULL;
+
+        CREATE TABLE IF NOT EXISTS folders (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            parent_id INTEGER REFERENCES folders(id) ON DELETE RESTRICT,
+            name TEXT NOT NULL,
+            sort_order INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS unique_root_folder_name
+            ON folders(user_id, name)
+            WHERE parent_id IS NULL;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS unique_child_folder_name
+            ON folders(user_id, parent_id, name)
+            WHERE parent_id IS NOT NULL;
         """
     )
 
