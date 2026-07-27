@@ -23,7 +23,7 @@ def get_main_menu_keyboard(role: UserRole | None = None) -> ReplyKeyboardMarkup:
     del role
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton("� Записи")],
+            [KeyboardButton("📝 Записи")],
             [KeyboardButton("⚙️ Налаштування")],
         ],
         resize_keyboard=True,

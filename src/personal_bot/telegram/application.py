@@ -55,6 +55,12 @@ def create_telegram_application(
     )
     telegram_application.add_handler(
         MessageHandler(
+            filters.TEXT & folders_message_handler.get_filter(),
+            folders_message_handler.handle,
+        )
+    )
+    telegram_application.add_handler(
+        MessageHandler(
             filters.TEXT
             & filters.Regex(
                 r"^📁 Папки$|^⚙️ Налаштування$|^🛡 Адміністрування$|^👥 Користувачі(?: \(\d+\))?$|^📨 Заявки$|^⬅ Назад$"

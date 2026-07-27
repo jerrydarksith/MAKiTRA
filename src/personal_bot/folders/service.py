@@ -22,9 +22,6 @@ class FoldersService:
             updated_at=created_at,
         )
 
-    def list_root_folders(self, owner_user_id: int) -> list[Folder]:
-        return self._folder_repository.list_root_folders(owner_user_id)
-
     def find_root_folder_by_name(self, owner_user_id: int, name: str) -> Folder | None:
         return self._folder_repository.find_root_folder_by_name(owner_user_id, name)
 

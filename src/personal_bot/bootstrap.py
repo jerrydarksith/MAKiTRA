@@ -24,6 +24,7 @@ def run_application() -> None:
         settings_repository = SettingsRepository(database)
         access_request_repository = AccessRequestRepository(database)
         category_repository = CategoryRepository(database)
+        folder_repository = FolderRepository(database)
         access_service = AccessService(
             database,
             user_repository,
@@ -32,12 +33,14 @@ def run_application() -> None:
         )
         users_service = UsersService(user_repository)
         categories_service = CategoriesService(category_repository)
+        folders_service = FoldersService(folder_repository)
         objects_service = ObjectsService()
         telegram_application = create_telegram_application(
             application_settings.telegram_bot_token,
             access_service,
             users_service,
             categories_service,
+            folders_service,
             objects_service,
         )
         telegram_application.run_polling()

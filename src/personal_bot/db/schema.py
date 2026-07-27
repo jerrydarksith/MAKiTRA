@@ -64,7 +64,7 @@ def initialize_database_schema(database: Database) -> None:
 
         CREATE TABLE IF NOT EXISTS folders (
             id INTEGER PRIMARY KEY,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             parent_id INTEGER REFERENCES folders(id) ON DELETE RESTRICT,
             name TEXT NOT NULL,
             sort_order INTEGER NOT NULL,
@@ -73,12 +73,32 @@ def initialize_database_schema(database: Database) -> None:
         );
 
         CREATE UNIQUE INDEX IF NOT EXISTS unique_root_folder_name
-            ON folders(user_id, name)
+            ON folders(owner_user_id, name)
             WHERE parent_id IS NULL;
 
         CREATE UNIQUE INDEX IF NOT EXISTS unique_child_folder_name
-            ON folders(user_id, parent_id, name)
+            ON folders(owner_user_id, parent_id, name)
             WHERE parent_id IS NOT NULL;
         """
     )
+
+    folder_columns = {
+        row["name"]
+        for row in database.execute("PRAGMA table_info(folders)").fetchall()
+    }
+    if "owner_user_id" not in folder_columns and "user_id" in folder_columns:
+        database.execute("ALTER TABLE folders RENAME COLUMN user_id TO owner_user_id")
+        database.execute("DROP INDEX IF EXISTS unique_root_folder_name")
+        database.execute("DROP INDEX IF EXISTS unique_child_folder_name")
+        database.execute_script(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS unique_root_folder_name
+                ON folders(owner_user_id, name)
+                WHERE parent_id IS NULL;
+
+            CREATE UNIQUE INDEX IF NOT EXISTS unique_child_folder_name
+                ON folders(owner_user_id, parent_id, name)
+                WHERE parent_id IS NOT NULL;
+            """
+        )
 

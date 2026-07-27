@@ -48,7 +48,7 @@ class StartCommandHandlerTests(unittest.TestCase):
         keyboard = get_main_menu_keyboard(UserRole.USER)
         buttons = [button.text for row in keyboard.keyboard for button in row]
 
-        self.assertEqual(buttons, ["� Записи", "⚙️ Налаштування"])
+        self.assertEqual(buttons, ["📝 Записи", "⚙️ Налаштування"])
 
     def test_settings_menu_includes_admin_section_for_super_admin(self) -> None:
         keyboard = get_settings_menu_keyboard(UserRole.SUPER_ADMIN, 5)

@@ -99,13 +99,29 @@ class FoldersMessageHandler:
             )
             return
 
-        if text == "⬅ Назад" and self.is_active_session(user_id):
-            self._end_folder_session(user_id)
-            await message.reply_text(
-                get_main_menu_message(),
-                reply_markup=get_main_menu_keyboard(self._get_user_role(telegram_user)),
-            )
-            return
+        if text == "⬅ Назад":
+            if user_id in self._pending_action_for_user:
+                self._pending_action_for_user.pop(user_id, None)
+                current_folder_id = self._current_folder_id(user_id)
+                if current_folder_id is not None:
+                    await self._show_folder_page(message, user_id, current_folder_id)
+                else:
+                    await self._show_folder_list(message, user_id)
+                return
+
+            if self.is_active_session(user_id):
+                current_folder_id = self._current_folder_id(user_id)
+                if current_folder_id is None:
+                    self._end_folder_session(user_id)
+                    await message.reply_text(
+                        get_main_menu_message(),
+                        reply_markup=get_main_menu_keyboard(self._get_user_role(telegram_user)),
+                    )
+                    return
+
+                self._start_folder_session(user_id, None)
+                await self._show_folder_list(message, user_id)
+                return
 
         if user_id in self._pending_action_for_user:
             action = self._pending_action_for_user[user_id]
@@ -127,18 +143,11 @@ class FoldersMessageHandler:
                 new_name = text.strip()
                 if new_name:
                     self._folders_service.update_folder_name(folder_id, user_id, new_name)
-                folder = self._folders_service.get_folder(folder_id, user_id)
-                if folder is None:
-                    self._end_folder_session(user_id)
-                    return
-                await message.reply_text(
-                    self._folders_service.build_folder_page_message(folder),
-                    reply_markup=get_folder_menu_keyboard(),
-                )
+                await self._show_folder_page(message, user_id, folder_id)
                 return
 
         if text.startswith("📁 "):
-            folder_name = text[3:]
+            folder_name = text[2:]
             folder = self._folders_service.find_root_folder_by_name(user_id, folder_name)
             if folder is None:
                 return
@@ -198,20 +207,25 @@ class FoldersMessageHandler:
             if folder_id is None:
                 self._end_folder_session(user_id)
                 return
-            folder = self._folders_service.get_folder(folder_id, user_id)
-            if folder is None:
-                self._end_folder_session(user_id)
-                return
-            await message.reply_text(
-                self._folders_service.build_folder_page_message(folder),
-                reply_markup=get_folder_menu_keyboard(),
-            )
+            await self._show_folder_page(message, user_id, folder_id)
             return
 
     async def _show_folder_list(self, message, user_id: int) -> None:
         await message.reply_text(
             self._folders_service.build_folder_list_message(user_id),
             reply_markup=get_folder_list_keyboard(self._folders_service.list_root_folders(user_id)),
+        )
+
+    async def _show_folder_page(self, message, user_id: int, folder_id: int) -> None:
+        folder = self._folders_service.get_folder(folder_id, user_id)
+        if folder is None:
+            self._end_folder_session(user_id)
+            return
+
+        self._start_folder_session(user_id, folder.id)
+        await message.reply_text(
+            self._folders_service.build_folder_page_message(folder),
+            reply_markup=get_folder_menu_keyboard(),
         )
 
     def _get_user_role(self, from_user) -> None:
