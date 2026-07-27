@@ -10,6 +10,7 @@ from personal_bot.db.repositories.user_repository import UserRepository
 from personal_bot.db.schema import initialize_database_schema
 from personal_bot.folders.service import FoldersService
 from personal_bot.objects.service import ObjectsService
+from personal_bot.records.registry import create_record_registry
 from personal_bot.telegram.application import create_telegram_application
 from personal_bot.users.service import UsersService
 
@@ -34,6 +35,7 @@ def run_application() -> None:
         users_service = UsersService(user_repository)
         categories_service = CategoriesService(category_repository)
         folders_service = FoldersService(folder_repository)
+        record_registry = create_record_registry()
         objects_service = ObjectsService()
         telegram_application = create_telegram_application(
             application_settings.telegram_bot_token,

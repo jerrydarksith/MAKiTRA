@@ -17,13 +17,32 @@ class DatabaseSchemaTests(unittest.TestCase):
                 table_rows = database.execute(
                     "SELECT name FROM sqlite_master WHERE type = 'table'"
                 ).fetchall()
+                record_columns = {
+                    row["name"]
+                    for row in database.execute("PRAGMA table_info(records)").fetchall()
+                }
             finally:
                 database.close()
 
         table_names = {table_row["name"] for table_row in table_rows}
         self.assertTrue(
-            {"users", "access_requests", "user_settings", "categories", "folders"}
+            {"users", "access_requests", "user_settings", "categories", "folders", "records"}
             .issubset(table_names)
+        )
+        self.assertEqual(
+            record_columns,
+            {
+                "id",
+                "owner_user_id",
+                "folder_id",
+                "type",
+                "name",
+                "payload",
+                "sort_order",
+                "created_at",
+                "updated_at",
+                "preview_text",
+            },
         )
 
 
