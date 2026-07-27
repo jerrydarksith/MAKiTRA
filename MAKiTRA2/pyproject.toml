@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "personal-information-system"
+version = "0.1.0"
+description = "Personal information system with Telegram as its interface"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "python-dotenv",
+    "python-telegram-bot",
+]

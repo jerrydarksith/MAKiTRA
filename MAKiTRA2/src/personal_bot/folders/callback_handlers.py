@@ -1,11 +1,11 @@
 from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.ext import ContextTypes, filters
-import traceback
 
 from personal_bot.folders.service import FoldersService
 from personal_bot.telegram.menus.folders_menu import (
     get_folder_delete_confirmation_keyboard,
-    get_folder_navigation_keyboard,
+    get_folder_list_keyboard,
+    get_folder_menu_keyboard,
     get_record_type_keyboard,
 )
 from personal_bot.telegram.menus.main_menu import get_main_menu_keyboard, get_main_menu_message
@@ -28,21 +28,17 @@ class FoldersMessageFilter(filters.MessageFilter):
         command_texts = {
             "📝 Записи",
             "➕ Новий запис",
-            "📁 Створити папку",
             "➕ Створити папку",
             "✏️ Перейменувати папку",
-            "🗑️ Видалити папку",
             "🗑 Видалити папку",
             "✅ Так",
             "❌ Ні",
-            "⬅️ Назад",
-            "⬅ Назад",
         }
 
-        if text == "⬅️ Назад":
+        if text == "⬅ Назад":
             return self._handler.is_active_session(user_id)
 
-        if text in command_texts or text.startswith("📁 ") or text.startswith("📝 "):
+        if text in command_texts or text.startswith("📁 "):
             return True
 
         return (
@@ -104,7 +100,7 @@ class FoldersMessageHandler:
             await self._show_folder_list(message, user_id)
             return
 
-        if text == "📁 Створити папку" or text == "➕ Створити папку":
+        if text == "➕ Створити папку":
             self._start_folder_session(user_id, self._current_folder_id(user_id))
             self._pending_action_for_user[user_id] = "create"
             await message.reply_text(
@@ -125,7 +121,7 @@ class FoldersMessageHandler:
             )
             return
 
-        if text == "⬅️ Назад" or text == "⬅ Назад":
+        if text == "⬅ Назад":
             if user_id in self._pending_action_for_user:
                 self._pending_action_for_user.pop(user_id, None)
                 self._selected_record_type_for_user.pop(user_id, None)
@@ -171,16 +167,8 @@ class FoldersMessageHandler:
                     self._end_folder_session(user_id)
                     return
                 try:
-                    user = self._users_service.find_user_by_telegram_id(user_id)
-                    if user is None or getattr(user, "id", None) is None:
-                        await message.reply_text(
-                            "Внутрішній ідентифікатор користувача не знайдено. Зверніться до адміністратора.",
-                        )
-                        return
-
-                    owner_id = user.id
                     self._records_service.create_record(
-                        owner_user_id=owner_id,
+                        owner_user_id=user_id,
                         folder_id=folder_id,
                         type_code=type_code,
                         name=text,
@@ -196,48 +184,11 @@ class FoldersMessageHandler:
 
             if action == "create":
                 folder_name = text.strip()
-                # debug prints as requested
-                pending_action = self._pending_action_for_user.get(user_id)
-                print("Поточний pending action.", pending_action)
+                if folder_name:
+                    self._folders_service.create_folder(owner_user_id=user_id, name=folder_name)
                 self._pending_action_for_user.pop(user_id, None)
-                try:
-                    print("Отримано текст від користувача.", text)
-                    parent_folder_id = self._current_folder_id(user_id)
-                    print("Значення parent_folder_id.", parent_folder_id)
-                    user = self._users_service.find_user_by_telegram_id(user_id)
-                    if user is None or getattr(user, "id", None) is None:
-                        print("Значення owner_user_id.", None)
-                        print("Перед reply_text().")
-                        await message.reply_text(
-                            "Внутрішній ідентифікатор користувача не знайдено. Зверніться до адміністратора.",
-                            reply_markup=self._create_back_keyboard(),
-                        )
-                        print("Після reply_text().")
-                        return
-
-                    print("Значення owner_user_id.", user.id)
-                    print("Перед викликом create_folder().")
-                    self._folders_service.create_folder(
-                        owner_user_id=user.id,
-                        name=folder_name,
-                        parent_id=parent_folder_id,
-                    )
-                    print("Після успішного create_folder().")
-                except ValueError as error:
-                    try:
-                        print("Перед reply_text().")
-                        await message.reply_text(str(error), reply_markup=self._create_back_keyboard())
-                        print("Після reply_text().")
-                        self._pending_action_for_user[user_id] = "create"
-                        return
-                    except Exception:
-                        traceback.print_exc()
-                        raise
-                except Exception:
-                    traceback.print_exc()
-                    raise
-                self._start_folder_session(user_id, self._current_folder_id(user_id))
-                await self._show_folder_page(message, user_id, self._current_folder_id(user_id))
+                self._start_folder_session(user_id, None)
+                await self._show_folder_list(message, user_id)
                 return
 
             if action == "rename":
@@ -247,41 +198,14 @@ class FoldersMessageHandler:
                     self._end_folder_session(user_id)
                     return
                 new_name = text.strip()
-                try:
-                    user = self._users_service.find_user_by_telegram_id(user_id)
-                    if user is None or getattr(user, "id", None) is None:
-                        await message.reply_text(
-                            "Внутрішній ідентифікатор користувача не знайдено. Зверніться до адміністратора.",
-                            reply_markup=self._create_back_keyboard(),
-                        )
-                        return
-
-                    owner_id = user.id
-                    self._folders_service.update_folder_name(folder_id, owner_id, new_name)
-                except ValueError as error:
-                    await message.reply_text(str(error), reply_markup=self._create_back_keyboard())
-                    self._pending_action_for_user[user_id] = "rename"
-                    return
+                if new_name:
+                    self._folders_service.update_folder_name(folder_id, user_id, new_name)
                 await self._show_folder_page(message, user_id, folder_id)
                 return
 
         if text.startswith("📁 "):
             folder_name = text[2:]
-            current_folder_id = self._current_folder_id(user_id)
-            user = self._users_service.find_user_by_telegram_id(user_id)
-            if user is None or getattr(user, "id", None) is None:
-                await message.reply_text(
-                    "Внутрішній ідентифікатор користувача не знайдено. Зверніться до адміністратора.",
-                    reply_markup=self._create_back_keyboard(),
-                )
-                return
-
-            owner_id = user.id
-            folder = self._folders_service.find_folder_by_name_and_parent(
-                owner_user_id=owner_id,
-                name=folder_name,
-                parent_id=current_folder_id,
-            )
+            folder = self._folders_service.find_root_folder_by_name(user_id, folder_name)
             if folder is None:
                 return
             self._start_folder_session(user_id, folder.id)
@@ -300,20 +224,11 @@ class FoldersMessageHandler:
             )
             return
 
-        if text == "🗑️ Видалити папку":
+        if text == "🗑 Видалити папку":
             folder_id = self._current_folder_id(user_id)
             if folder_id is None:
                 return
-            user = self._users_service.find_user_by_telegram_id(user_id)
-            if user is None or getattr(user, "id", None) is None:
-                await message.reply_text(
-                    "Внутрішній ідентифікатор користувача не знайдено. Зверніться до адміністратора.",
-                    reply_markup=self._create_back_keyboard(),
-                )
-                return
-
-            owner_id = user.id
-            folder = self._folders_service.get_folder(folder_id, owner_id)
+            folder = self._folders_service.get_folder(folder_id, user_id)
             if folder is None:
                 return
             await message.reply_text(
@@ -326,27 +241,18 @@ class FoldersMessageHandler:
             folder_id = self._current_folder_id(user_id)
             if folder_id is None:
                 return
-            user = self._users_service.find_user_by_telegram_id(user_id)
-            if user is None or getattr(user, "id", None) is None:
-                await message.reply_text(
-                    "Внутрішній ідентифікатор користувача не знайдено. Зверніться до адміністратора.",
-                    reply_markup=self._create_back_keyboard(),
-                )
-                return
-
-            owner_id = user.id
-            folder = self._folders_service.get_folder(folder_id, owner_id)
+            folder = self._folders_service.get_folder(folder_id, user_id)
             if folder is None:
                 self._end_folder_session(user_id)
                 return
-            if self._folders_service.can_delete_folder(folder_id, owner_id):
-                self._folders_service.delete_folder(folder_id, owner_id)
+            if self._folders_service.can_delete_folder(folder_id, user_id):
+                self._folders_service.delete_folder(folder_id, user_id)
                 self._start_folder_session(user_id, None)
                 await self._show_folder_list(message, user_id)
                 return
             await message.reply_text(
-                "Папка не порожня або містить записи. Видалення неможливе.",
-                reply_markup=self._create_back_keyboard(),
+                "Папка не порожня. Видалення непорожніх папок буде реалізовано пізніше.",
+                reply_markup=get_folder_menu_keyboard(),
             )
             return
 
@@ -359,58 +265,32 @@ class FoldersMessageHandler:
             return
 
     async def _show_folder_list(self, message, user_id: int) -> None:
-        telegram_user = message.from_user
-        if telegram_user is None:
-            return
-
-        user = self._users_service.find_user_by_telegram_id(telegram_user.id)
-        if user is None or getattr(user, "id", None) is None:
-            await message.reply_text(
-                "Внутрішній ідентифікатор користувача не знайдено. Зверніться до адміністратора.",
-                reply_markup=self._create_back_keyboard(),
-            )
-            return
-
-        owner_id = user.id
-
         await message.reply_text(
-            self._folders_service.build_folder_list_message(owner_id),
-            reply_markup=get_folder_navigation_keyboard(
-                self._folders_service.list_root_folders(owner_id),
-                [],
-            ),
+            self._folders_service.build_folder_list_message(user_id),
+            reply_markup=get_folder_list_keyboard(self._folders_service.list_root_folders(user_id)),
         )
 
-    async def _show_folder_page(self, message, user_id: int, folder_id: int | None) -> None:
-        if folder_id is None:
-            await self._show_folder_list(message, user_id)
-            return
-        telegram_user = message.from_user
-        if telegram_user is None:
-            return
-
-        user = self._users_service.find_user_by_telegram_id(telegram_user.id)
-        if user is None or getattr(user, "id", None) is None:
-            await message.reply_text(
-                "Внутрішній ідентифікатор користувача не знайдено. Зверніться до адміністратора.",
-                reply_markup=self._create_back_keyboard(),
-            )
-            return
-
-        owner_id = user.id
-
-        folder = self._folders_service.get_folder(folder_id, owner_id)
+    async def _show_folder_page(self, message, user_id: int, folder_id: int) -> None:
+        folder = self._folders_service.get_folder(folder_id, user_id)
         if folder is None:
             self._end_folder_session(user_id)
             return
 
         self._start_folder_session(user_id, folder.id)
-        child_folders = self._folders_service.list_child_folders(folder.id, owner_id)
-        records = self._records_service.list_records(folder.id, owner_id)
+        records = self._records_service.list_records(folder.id, user_id)
         await message.reply_text(
-            self._folders_service.build_folder_page_message(folder),
-            reply_markup=get_folder_navigation_keyboard(child_folders, records),
+            self._build_folder_page_message(folder.name, [record.name for record in records]),
+            reply_markup=get_folder_menu_keyboard(),
         )
+
+    @staticmethod
+    def _build_folder_page_message(folder_name: str, record_names: list[str]) -> str:
+        if not record_names:
+            return f"📁 {folder_name}\n\nПапка порожня."
+
+        lines = [f"📁 {folder_name}", "", "📝 Записи:"]
+        lines.extend(f"• {record_name}" for record_name in record_names)
+        return "\n".join(lines)
 
     def _get_user_role(self, from_user) -> None:
         if from_user is None:
@@ -422,6 +302,6 @@ class FoldersMessageHandler:
     @staticmethod
     def _create_back_keyboard() -> ReplyKeyboardMarkup:
         return ReplyKeyboardMarkup(
-            [[KeyboardButton("⬅️ Назад")]],
+            [[KeyboardButton("⬅ Назад")]],
             resize_keyboard=True,
         )

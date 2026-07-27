@@ -29,9 +29,8 @@ class FakeUpdate:
 
 class FakeUsersService:
     def find_user_by_telegram_id(self, telegram_id: int) -> SimpleNamespace | None:
-        # Return a User-like object where internal id is different from telegram id
-        # This simulates a real User object with separate fields.
-        return SimpleNamespace(id=1, telegram_id=999, role=UserRole.SUPER_ADMIN)
+        del telegram_id
+        return SimpleNamespace(role=UserRole.SUPER_ADMIN)
 
 
 class FakeRecordsService:
@@ -97,24 +96,13 @@ class FoldersHandlerMVPTTests(unittest.IsolatedAsyncioTestCase):
         await self.handler.handle(update, None)
 
         message = update.effective_message
-        self.assertGreaterEqual(len(message.replies), 1)
-        self.assertEqual("📂 Мої записи", message.replies[0]["text"])
+        self.assertEqual(len(message.replies), 1)
+        self.assertIn("📝 Мої записи", message.replies[0]["text"])
         keyboard = message.replies[0]["reply_markup"]
         self.assertIsNotNone(keyboard)
         button_labels = [button.text for row in keyboard.keyboard for button in row]
-        self.assertIn("📁 Створити папку", button_labels)
-        self.assertIn("⬅️ Назад", button_labels)
-
-    async def test_child_folder_navigation_uses_path_message(self) -> None:
-        self.folders_service.create_folder(owner_user_id=1, name="Робота")
-
-        await self.handler.handle(self._make_update("📝 Записи"), None)
-        await self.handler.handle(self._make_update("📁 Робота"), None)
-
-        message = self._make_update("📁 Робота")
-        await self.handler.handle(message, None)
-
-        self.assertEqual(message.effective_message.replies[-1]["text"], "📂 Мої записи / Робота")
+        self.assertIn("➕ Створити папку", button_labels)
+        self.assertIn("⬅ Назад", button_labels)
 
     async def test_create_folder_flow(self) -> None:
         create_update = self._make_update("➕ Створити папку")
@@ -125,7 +113,7 @@ class FoldersHandlerMVPTTests(unittest.IsolatedAsyncioTestCase):
 
         folder = self.folders_service.find_root_folder_by_name(owner_user_id=1, name="Робота")
         self.assertIsNotNone(folder)
-        self.assertIn("� Мої записи", name_update.effective_message.replies[-1]["text"])
+        self.assertIn("📝 Мої записи", name_update.effective_message.replies[-1]["text"])
 
     async def test_open_folder_and_rename_flow(self) -> None:
         self.folders_service.create_folder(owner_user_id=1, name="Робота")
@@ -145,7 +133,7 @@ class FoldersHandlerMVPTTests(unittest.IsolatedAsyncioTestCase):
         folder = self.folders_service.get_folder(folder_id=1, owner_user_id=1)
         self.assertIsNotNone(folder)
         self.assertEqual(folder.name, "Дом")
-        self.assertIn("� Мої записи / Дом", renamed_update.effective_message.replies[-1]["text"])
+        self.assertIn("📁 Дом", renamed_update.effective_message.replies[-1]["text"])
 
     async def test_delete_confirmation_and_cancel_flow(self) -> None:
         self.folders_service.create_folder(owner_user_id=1, name="Робота")
@@ -164,7 +152,7 @@ class FoldersHandlerMVPTTests(unittest.IsolatedAsyncioTestCase):
         cancel_update = self._make_update("❌ Ні")
         await self.handler.handle(cancel_update, None)
 
-        self.assertIn("� Мої записи / Робота", cancel_update.effective_message.replies[-1]["text"])
+        self.assertIn("📁 Робота", cancel_update.effective_message.replies[-1]["text"])
 
     async def test_back_from_folder_detail_returns_to_list(self) -> None:
         self.folders_service.create_folder(owner_user_id=1, name="Робота")
@@ -175,7 +163,7 @@ class FoldersHandlerMVPTTests(unittest.IsolatedAsyncioTestCase):
         back_update = self._make_update("⬅ Назад")
         await self.handler.handle(back_update, None)
 
-        self.assertIn("� Мої записи", back_update.effective_message.replies[-1]["text"])
+        self.assertIn("📝 Мої записи", back_update.effective_message.replies[-1]["text"])
 
     async def test_create_short_text_record_flow(self) -> None:
         self.folders_service.create_folder(owner_user_id=1, name="Робота")
@@ -203,5 +191,5 @@ class FoldersHandlerMVPTTests(unittest.IsolatedAsyncioTestCase):
                 "data": {"value": "Мій запис"},
             },
         )
-        self.assertIn("� Мої записи / Робота", text_update.effective_message.replies[-1]["text"])
+        self.assertIn("📝 Записи:", text_update.effective_message.replies[-1]["text"])
         self.assertIn("Мій запис", text_update.effective_message.replies[-1]["text"])

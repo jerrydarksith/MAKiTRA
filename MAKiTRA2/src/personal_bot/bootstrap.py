@@ -38,7 +38,7 @@ def run_application() -> None:
         )
         users_service = UsersService(user_repository)
         categories_service = CategoriesService(category_repository)
-        folders_service = FoldersService(database, folder_repository)
+        folders_service = FoldersService(folder_repository)
         record_registry = create_record_registry()
         record_registry.register("short_text", ShortTextRecordType())
         records_service = RecordsService(record_repository, record_registry)

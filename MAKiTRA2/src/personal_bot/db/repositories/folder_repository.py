@@ -39,29 +39,15 @@ class FolderRepository:
         )
 
     def list_root_folders(self, owner_user_id: int) -> list[Folder]:
-        return self.list_by_parent_and_owner(None, owner_user_id)
-
-    def list_by_parent_and_owner(self, parent_id: int | None, owner_user_id: int) -> list[Folder]:
-        if parent_id is None:
-            rows = self._database.execute(
-                """
-                SELECT id, owner_user_id, parent_id, name, sort_order
-                FROM folders
-                WHERE owner_user_id = ? AND parent_id IS NULL
-                ORDER BY sort_order ASC, name COLLATE NOCASE
-                """,
-                (owner_user_id,),
-            ).fetchall()
-        else:
-            rows = self._database.execute(
-                """
-                SELECT id, owner_user_id, parent_id, name, sort_order
-                FROM folders
-                WHERE owner_user_id = ? AND parent_id = ?
-                ORDER BY sort_order ASC, name COLLATE NOCASE
-                """,
-                (owner_user_id, parent_id),
-            ).fetchall()
+        rows = self._database.execute(
+            """
+            SELECT id, owner_user_id, parent_id, name, sort_order
+            FROM folders
+            WHERE owner_user_id = ? AND parent_id IS NULL
+            ORDER BY sort_order ASC, name COLLATE NOCASE
+            """,
+            (owner_user_id,),
+        ).fetchall()
 
         return [
             Folder(
@@ -75,34 +61,15 @@ class FolderRepository:
         ]
 
     def find_root_folder_by_name(self, owner_user_id: int, name: str) -> Folder | None:
-        return self.find_by_name_and_parent(owner_user_id, name, None)
-
-    def find_by_name_and_parent(
-        self,
-        owner_user_id: int,
-        name: str,
-        parent_id: int | None,
-    ) -> Folder | None:
-        if parent_id is None:
-            row = self._database.execute(
-                """
-                SELECT id, owner_user_id, parent_id, name, sort_order
-                FROM folders
-                WHERE owner_user_id = ? AND parent_id IS NULL AND name = ?
-                LIMIT 1
-                """,
-                (owner_user_id, name),
-            ).fetchone()
-        else:
-            row = self._database.execute(
-                """
-                SELECT id, owner_user_id, parent_id, name, sort_order
-                FROM folders
-                WHERE owner_user_id = ? AND parent_id = ? AND name = ?
-                LIMIT 1
-                """,
-                (owner_user_id, parent_id, name),
-            ).fetchone()
+        row = self._database.execute(
+            """
+            SELECT id, owner_user_id, parent_id, name, sort_order
+            FROM folders
+            WHERE owner_user_id = ? AND parent_id IS NULL AND name = ?
+            LIMIT 1
+            """,
+            (owner_user_id, name),
+        ).fetchone()
 
         if row is None:
             return None
@@ -178,18 +145,8 @@ class FolderRepository:
             """,
             (folder_id, owner_user_id),
         ).fetchone()
-        if child_row is not None:
-            return False
 
-        record_row = self._database.execute(
-            """
-            SELECT 1 FROM records
-            WHERE folder_id = ? AND owner_user_id = ?
-            LIMIT 1
-            """,
-            (folder_id, owner_user_id),
-        ).fetchone()
-        return record_row is None
+        return child_row is None
 
     def get_next_sort_order(self, owner_user_id: int) -> int:
         row = self._database.execute(

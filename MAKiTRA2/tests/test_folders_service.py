@@ -38,7 +38,8 @@ class FoldersServiceTests(unittest.TestCase):
     def test_build_folder_list_message_on_empty_collection(self) -> None:
         message = self.folders_service.build_folder_list_message(owner_user_id=1)
 
-        self.assertIn("� Мої записи", message)
+        self.assertIn("📝 Мої записи", message)
+        self.assertIn("немає жодної папки", message)
 
     def test_create_folder_and_find_folder(self) -> None:
         folder = self.folders_service.create_folder(owner_user_id=1, name="Робота")
@@ -68,7 +69,8 @@ class FoldersServiceTests(unittest.TestCase):
     def test_build_folder_page_message(self) -> None:
         folder = self.folders_service.create_folder(owner_user_id=1, name="Робота")
         page = self.folders_service.build_folder_page_message(folder)
-        self.assertIn("� Мої записи / Робота", page)
+        self.assertIn("📁 Робота", page)
+        self.assertIn("Папка порожня", page)
 
 
 if __name__ == "__main__":
