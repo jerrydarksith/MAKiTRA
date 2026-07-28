@@ -71,6 +71,13 @@ class FakeRecordsService:
                 return SimpleNamespace(id=record["id"], **record_args)
         raise ValueError("record not found")
 
+    def delete_record(self, record_id: int, owner_user_id: int) -> None:
+        self.created_records = [
+            record
+            for record in self.created_records
+            if not (record["id"] == record_id and record["owner_user_id"] == owner_user_id)
+        ]
+
     def list_records(self, folder_id: int, owner_user_id: int) -> list[SimpleNamespace]:
         return [
             SimpleNamespace(id=record["id"], name=record["name"])
@@ -78,6 +85,21 @@ class FakeRecordsService:
             if record["folder_id"] == folder_id
             and record["owner_user_id"] == owner_user_id
         ]
+
+
+class FakeRemindersService:
+    def __init__(self) -> None:
+        self.created_reminders: list[dict[str, object]] = []
+
+    def create_reminder(self, *, record_id: int, text: str, remind_at: str, owner_user_id: int | None = None) -> dict[str, object]:
+        reminder = {
+            "record_id": record_id,
+            "text": text,
+            "remind_at": remind_at,
+            "owner_user_id": owner_user_id,
+        }
+        self.created_reminders.append(reminder)
+        return reminder
 
 
 class FakeRecordRegistry:
@@ -107,10 +129,12 @@ class FoldersHandlerMVPTTests(unittest.IsolatedAsyncioTestCase):
         self.folder_repository = FolderRepository(self.database)
         self.folders_service = FoldersService(self.database, self.folder_repository)
         self.records_service = FakeRecordsService()
+        self.reminders_service = FakeRemindersService()
         self.handler = FoldersMessageHandler(
             self.folders_service,
             FakeUsersService(),
             self.records_service,
+            self.reminders_service,
             FakeRecordRegistry(),
         )
 
@@ -305,6 +329,29 @@ class FoldersHandlerMVPTTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(record["data"]["fields"][0]["value"], "1800")
         self.assertEqual(record["data"]["fields"][0]["type"], "text")
 
+    async def test_edit_field_value_finds_field_by_index_when_payload_id_is_missing(self) -> None:
+        self.handler._start_folder_session(1, 1, page=0)
+
+        await self.handler.handle(self._make_update("➕ Новий запис"), None)
+        await self.handler.handle(self._make_update("Заміна масла"), None)
+        await self.handler.handle(self._make_update("➕ Додати дані"), None)
+        await self.handler.handle(self._make_update("📝 Текст"), None)
+        await self.handler.handle(self._make_update("Сума"), None)
+        await self.handler.handle(self._make_update("1500"), None)
+
+        record = self.records_service.created_records[0]
+        record["data"]["fields"][0].pop("id", None)
+
+        await self.handler.handle(self._make_update("⚙️ Дії із записом"), None)
+        await self.handler.handle(self._make_update("📝 Редагувати поля"), None)
+        await self.handler.handle(self._make_update("Сума"), None)
+        await self.handler.handle(self._make_update("✏️ Змінити значення"), None)
+        await self.handler.handle(self._make_update("1800"), None)
+
+        self.assertEqual(record["data"]["fields"][0]["name"], "Сума")
+        self.assertEqual(record["data"]["fields"][0]["value"], "1800")
+        self.assertEqual(record["data"]["fields"][0]["type"], "text")
+
     async def test_edit_field_value_reprompts_when_value_is_empty(self) -> None:
         self.handler._start_folder_session(1, 1, page=0)
 
@@ -328,6 +375,31 @@ class FoldersHandlerMVPTTests(unittest.IsolatedAsyncioTestCase):
             1,
         )
 
+    async def test_delete_record_flow_deletes_only_selected_record(self) -> None:
+        self.handler._start_folder_session(1, 1, page=0)
+
+        await self.handler.handle(self._make_update("➕ Новий запис"), None)
+        await self.handler.handle(self._make_update("Заміна масла"), None)
+        await self.handler.handle(self._make_update("➕ Додати дані"), None)
+        await self.handler.handle(self._make_update("📝 Текст"), None)
+        await self.handler.handle(self._make_update("Коментар"), None)
+        await self.handler.handle(self._make_update("Тест"), None)
+
+        await self.handler.handle(self._make_update("➕ Новий запис"), None)
+        await self.handler.handle(self._make_update("Заміна двигуна"), None)
+        await self.handler.handle(self._make_update("➕ Додати дані"), None)
+        await self.handler.handle(self._make_update("📝 Текст"), None)
+        await self.handler.handle(self._make_update("Коментар"), None)
+        await self.handler.handle(self._make_update("Тест 2"), None)
+
+        await self.handler.handle(self._make_update("⚙️ Дії із записом"), None)
+        await self.handler.handle(self._make_update("🗑 Видалити запис"), None)
+        await self.handler.handle(self._make_update("✅ Так"), None)
+
+        remaining_records = self.records_service.list_records(1, 1)
+        self.assertEqual(len(remaining_records), 1)
+        self.assertEqual(remaining_records[0].name, "Заміна масла")
+
     async def test_record_actions_menu_opens_for_record_page(self) -> None:
         self.handler._start_folder_session(1, 1, page=0)
 
@@ -336,6 +408,31 @@ class FoldersHandlerMVPTTests(unittest.IsolatedAsyncioTestCase):
         await self.handler.handle(self._make_update("⚙️ Дії із записом"), None)
 
         self.assertEqual(self.handler._record_actions_for_user[1], "record_actions")
+
+    async def test_create_reminder_flow_saves_reminder_and_returns_to_record(self) -> None:
+        self.handler._start_folder_session(1, 1, page=0)
+
+        await self.handler.handle(self._make_update("➕ Новий запис"), None)
+        await self.handler.handle(self._make_update("Заміна масла"), None)
+        await self.handler.handle(self._make_update("⚙️ Дії із записом"), None)
+        await self.handler.handle(self._make_update("⏰ Нагадування"), None)
+        await self.handler.handle(self._make_update("Перевірити техніку"), None)
+
+        final_update = self._make_update("28.07.2026 15:30")
+        await self.handler.handle(final_update, None)
+
+        self.assertEqual(len(self.reminders_service.created_reminders), 1)
+        created_reminder = self.reminders_service.created_reminders[0]
+        self.assertEqual(created_reminder["record_id"], 1)
+        self.assertEqual(created_reminder["text"], "Перевірити техніку")
+        self.assertEqual(created_reminder["remind_at"], "28.07.2026 15:30")
+
+        self.assertIsNone(self.handler._pending_action_for_user.get(1))
+        self.assertIsNone(self.handler._pending_reminder_data_for_user.get(1))
+        self.assertEqual(self.handler._selected_record_id_for_user[1], 1)
+
+        self.assertGreaterEqual(len(final_update.effective_message.replies), 2)
+        self.assertEqual(final_update.effective_message.replies[-2]["text"], "Нагадування створено")
 
     async def test_edit_fields_menu_lists_existing_fields(self) -> None:
         self.handler._start_folder_session(1, 1, page=0)

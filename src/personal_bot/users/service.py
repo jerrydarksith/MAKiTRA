@@ -19,6 +19,9 @@ class UsersService:
     def find_user_by_telegram_id(self, telegram_id: int) -> User | None:
         return self._user_repository.find_by_telegram_id(telegram_id)
 
+    def find_user_by_id(self, user_id: int) -> User | None:
+        return self._user_repository.find_by_id(user_id)
+
     def get_active_users_count(self) -> int:
         return len(self._user_repository.list_active_users())
 

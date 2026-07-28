@@ -24,7 +24,12 @@ from personal_bot.objects.callback_handlers import ObjectsMessageHandler
 from personal_bot.objects.service import ObjectsService
 from personal_bot.records.registry import RecordRegistry
 from personal_bot.records.service import RecordsService
+from personal_bot.reminders.service import RemindersService
 from personal_bot.users.callback_handlers import UsersCallbackHandler, UsersMessageHandler
+
+
+async def _dispatch_due_reminders(application: Application, reminders_service: RemindersService) -> None:
+    await reminders_service.dispatch_due_reminders(application.bot)
 from personal_bot.users.service import UsersService
 
 
@@ -35,6 +40,7 @@ def create_telegram_application(
     categories_service: CategoriesService,
     folders_service: FoldersService,
     records_service: RecordsService,
+    reminders_service: RemindersService,
     record_registry: RecordRegistry,
     objects_service: ObjectsService,
 ) -> Application:
@@ -53,6 +59,7 @@ def create_telegram_application(
         folders_service,
         users_service,
         records_service,
+        reminders_service,
         record_registry,
     )
     objects_message_handler = ObjectsMessageHandler(objects_service)
@@ -94,6 +101,11 @@ def create_telegram_application(
             access_request_callback_handler.handle,
             pattern=r"^access_request:(approve|reject):\d+$",
         )
+    )
+    telegram_application.job_queue.run_repeating(
+        lambda context: _dispatch_due_reminders(telegram_application, reminders_service),
+        interval=60,
+        first=0,
     )
     telegram_application.add_handler(
         CallbackQueryHandler(

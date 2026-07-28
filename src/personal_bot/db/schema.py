@@ -93,10 +93,54 @@ def initialize_database_schema(database: Database) -> None:
             preview_text TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS reminders (
+            id INTEGER PRIMARY KEY,
+            record_id INTEGER NOT NULL REFERENCES records(id) ON DELETE CASCADE,
+            text TEXT NOT NULL,
+            remind_at TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('active', 'sent')),
+            created_at TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS records_by_folder_and_owner
             ON records(folder_id, owner_user_id, sort_order);
+
+        CREATE INDEX IF NOT EXISTS reminders_by_time_and_status
+            ON reminders(remind_at, status);
         """
     )
+
+    reminder_columns = {
+        row["name"]
+        for row in database.execute("PRAGMA table_info(reminders)").fetchall()
+    }
+    if "owner_user_id" in reminder_columns:
+        database.execute("DROP INDEX IF EXISTS reminders_by_owner_and_time")
+        database.execute("ALTER TABLE reminders RENAME TO reminders_legacy")
+        database.execute_script(
+            """
+            CREATE TABLE reminders (
+                id INTEGER PRIMARY KEY,
+                record_id INTEGER NOT NULL REFERENCES records(id) ON DELETE CASCADE,
+                text TEXT NOT NULL,
+                remind_at TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('active', 'sent')),
+                created_at TEXT NOT NULL
+            );
+
+            INSERT INTO reminders (id, record_id, text, remind_at, status, created_at)
+            SELECT id, record_id, text, remind_at, status, created_at
+            FROM reminders_legacy;
+
+            DROP TABLE reminders_legacy;
+            """
+        )
+        database.execute_script(
+            """
+            CREATE INDEX IF NOT EXISTS reminders_by_time_and_status
+                ON reminders(remind_at, status);
+            """
+        )
 
     folder_columns = {
         row["name"]

@@ -79,6 +79,7 @@ class RecordsService:
 
         record_type = self._get_record_type(record.type)
         payload = self._deserialize_record_payload(record_type, record.payload)
+        print("[DEBUG get_record] record_id=", record_id, "payload=", payload)
         return replace(record, payload=payload)
 
     def list_records(self, folder_id: int, owner_user_id: int) -> list[Record]:
@@ -126,6 +127,8 @@ class RecordsService:
             record_type.validate(updated_data)
             payload = record_type.serialize(updated_data)
 
+        print("[DEBUG service] update_record record_id=", record_id)
+        print("[DEBUG service] update_record payload=", payload)
         updated_at = datetime.now(timezone.utc).isoformat()
         if self._database is None:
             updated_record = self._record_repository.update(

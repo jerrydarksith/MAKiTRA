@@ -65,6 +65,18 @@ class RecordRepository:
         ).fetchone()
         return self._row_to_record(row) if row is not None else None
 
+    def get_by_id(self, record_id: int) -> Record | None:
+        row = self._database.execute(
+            """
+            SELECT id, owner_user_id, folder_id, type, name, payload, sort_order,
+                   created_at, updated_at, preview_text
+            FROM records
+            WHERE id = ?
+            """,
+            (record_id,),
+        ).fetchone()
+        return self._row_to_record(row) if row is not None else None
+
     def list_by_folder_and_owner(self, folder_id: int, owner_user_id: int) -> list[Record]:
         rows = self._database.execute(
             """
@@ -87,6 +99,8 @@ class RecordRepository:
         updated_at: str,
         preview_text: str | None = None,
     ) -> Record | None:
+        print("[DEBUG repository] SQL update record_id=", record_id)
+        print("[DEBUG repository] SQL payload=", payload)
         cursor = self._database.execute(
             """
             UPDATE records

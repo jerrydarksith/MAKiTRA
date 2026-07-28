@@ -1,3 +1,4 @@
+from datetime import datetime
 from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.ext import ContextTypes, filters
 import traceback
@@ -19,6 +20,7 @@ from personal_bot.telegram.menus.record_menu import (
 )
 from personal_bot.records.registry import RecordRegistry
 from personal_bot.records.service import RecordsService
+from personal_bot.reminders.service import RemindersService
 from personal_bot.users.service import UsersService
 
 
@@ -70,11 +72,13 @@ class FoldersMessageHandler:
         folders_service: FoldersService,
         users_service: UsersService,
         records_service: RecordsService,
+        reminders_service: RemindersService,
         record_registry: RecordRegistry,
     ) -> None:
         self._folders_service = folders_service
         self._users_service = users_service
         self._records_service = records_service
+        self._reminders_service = reminders_service
         self._record_registry = record_registry
         self._folder_session_for_user: dict[int, int | None] = {}
         self._folder_page_for_user: dict[int, int] = {}
@@ -84,6 +88,7 @@ class FoldersMessageHandler:
         self._pending_field_data_for_user: dict[int, dict[str, object]] = {}
         self._record_actions_for_user: dict[int, str] = {}
         self._selected_field_for_user: dict[int, dict[str, object]] = {}
+        self._pending_reminder_data_for_user: dict[int, dict[str, object]] = {}
 
     def get_filter(self) -> FoldersMessageFilter:
         return FoldersMessageFilter(self)
@@ -431,6 +436,51 @@ class FoldersMessageHandler:
                     await self._show_record_page(message, user_id, record_id)
                 return
 
+            if action == "enter_reminder_text":
+                reminder_text = text.strip()
+                if not reminder_text:
+                    await message.reply_text("Текст нагадування не може бути порожнім.", reply_markup=self._create_back_keyboard())
+                    return
+                self._pending_reminder_data_for_user[user_id] = {"text": reminder_text}
+                self._pending_action_for_user[user_id] = "enter_reminder_datetime"
+                await message.reply_text(
+                    "Введіть дату і час нагадування",
+                    reply_markup=self._create_back_keyboard(),
+                )
+                return
+
+            if action == "enter_reminder_datetime":
+                reminder_datetime = text.strip()
+                if not reminder_datetime:
+                    await message.reply_text("Дата і час не можуть бути порожніми.", reply_markup=self._create_back_keyboard())
+                    return
+                try:
+                    datetime.strptime(reminder_datetime, "%d.%m.%Y %H:%M")
+                except ValueError:
+                    await message.reply_text("Невірний формат. Використовуйте ДД.ММ.РРРР ГГ:ХХ", reply_markup=self._create_back_keyboard())
+                    return
+                pending_data = self._pending_reminder_data_for_user.get(user_id, {})
+                reminder_text = pending_data.get("text")
+                if not reminder_text:
+                    self._pending_action_for_user.pop(user_id, None)
+                    self._pending_reminder_data_for_user.pop(user_id, None)
+                    return
+                record_id = self._selected_record_id_for_user.get(user_id)
+                if record_id is None:
+                    self._pending_action_for_user.pop(user_id, None)
+                    self._pending_reminder_data_for_user.pop(user_id, None)
+                    return
+                self._reminders_service.create_reminder(
+                    record_id=record_id,
+                    text=reminder_text,
+                    remind_at=reminder_datetime,
+                )
+                self._pending_action_for_user.pop(user_id, None)
+                self._pending_reminder_data_for_user.pop(user_id, None)
+                await message.reply_text("Нагадування створено")
+                await self._show_record_page(message, user_id, record_id)
+                return
+
             if action == "create":
                 folder_name = text.strip()
                 # debug prints as requested
@@ -744,7 +794,18 @@ class FoldersMessageHandler:
             )
             return
 
-        if text == "🗑️ Видалити папку":
+        if text == "⏰ Нагадування":
+            record_id = self._selected_record_id_for_user.get(user_id)
+            if record_id is None:
+                return
+            self._pending_action_for_user[user_id] = "enter_reminder_text"
+            await message.reply_text(
+                "Введіть текст нагадування",
+                reply_markup=self._create_back_keyboard(),
+            )
+            return
+
+        if text == "�🗑️ Видалити папку":
             folder_id = self._current_folder_id(user_id)
             if folder_id is None:
                 return
@@ -766,7 +827,41 @@ class FoldersMessageHandler:
             )
             return
 
+        if text == "🗑 Видалити запис":
+            record_id = self._selected_record_id_for_user.get(user_id)
+            if record_id is None:
+                return
+            await message.reply_text(
+                "Видалити запис?",
+                reply_markup=get_folder_delete_confirmation_keyboard(),
+            )
+            return
+
         if text == "✅ Так":
+            if self._record_actions_for_user.get(user_id) == "record_actions":
+                record_id = self._selected_record_id_for_user.get(user_id)
+                if record_id is None:
+                    return
+                user = self._users_service.find_user_by_telegram_id(user_id)
+                if user is None or getattr(user, "id", None) is None:
+                    await message.reply_text(
+                        "Внутрішній ідентифікатор користувача не знайдено. Зверніться до адміністратора.",
+                        reply_markup=self._create_back_keyboard(),
+                    )
+                    return
+
+                owner_id = user.id
+                self._records_service.delete_record(record_id, owner_id)
+                self._record_actions_for_user.pop(user_id, None)
+                self._selected_record_id_for_user.pop(user_id, None)
+                self._selected_field_for_user.pop(user_id, None)
+                current_folder_id = self._current_folder_id(user_id)
+                if current_folder_id is None:
+                    await self._show_folder_list(message, user_id)
+                else:
+                    await self._show_folder_page(message, user_id, current_folder_id)
+                return
+
             folder_id = self._current_folder_id(user_id)
             if folder_id is None:
                 return
@@ -795,6 +890,14 @@ class FoldersMessageHandler:
             return
 
         if text == "❌ Ні":
+            if self._record_actions_for_user.get(user_id) == "record_actions":
+                record_id = self._selected_record_id_for_user.get(user_id)
+                if record_id is None:
+                    return
+                self._record_actions_for_user.pop(user_id, None)
+                await self._show_record_page(message, user_id, record_id)
+                return
+
             folder_id = self._current_folder_id(user_id)
             if folder_id is None:
                 self._end_folder_session(user_id)

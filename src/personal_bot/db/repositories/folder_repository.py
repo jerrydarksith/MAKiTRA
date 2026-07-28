@@ -137,6 +137,28 @@ class FolderRepository:
             sort_order=row["sort_order"],
         )
 
+    def find_by_id(self, folder_id: int) -> Folder | None:
+        row = self._database.execute(
+            """
+            SELECT id, owner_user_id, parent_id, name, sort_order
+            FROM folders
+            WHERE id = ?
+            LIMIT 1
+            """,
+            (folder_id,),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        return Folder(
+            id=row["id"],
+            owner_user_id=row["owner_user_id"],
+            parent_id=row["parent_id"],
+            name=row["name"],
+            sort_order=row["sort_order"],
+        )
+
     def update_name(
         self,
         folder_id: int,

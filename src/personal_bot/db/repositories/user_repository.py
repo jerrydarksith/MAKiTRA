@@ -30,6 +30,29 @@ class UserRepository:
             status=UserStatus(user_row["status"]),
         )
 
+    def find_by_id(self, user_id: int) -> User | None:
+        user_row = self._database.execute(
+            """
+            SELECT id, telegram_id, username, first_name, last_name, role, status
+            FROM users
+            WHERE id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+
+        if user_row is None:
+            return None
+
+        return User(
+            id=user_row["id"],
+            telegram_id=user_row["telegram_id"],
+            username=user_row["username"],
+            first_name=user_row["first_name"],
+            last_name=user_row["last_name"],
+            role=UserRole(user_row["role"]),
+            status=UserStatus(user_row["status"]),
+        )
+
     def has_any_users(self) -> bool:
         user_row = self._database.execute("SELECT 1 FROM users LIMIT 1").fetchone()
         return user_row is not None
