@@ -1,2 +1,0 @@
-"""Telegram interface layer."""
-

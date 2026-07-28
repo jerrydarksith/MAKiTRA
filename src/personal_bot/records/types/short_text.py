@@ -12,7 +12,9 @@ class ShortTextRecordType(RecordType):
         return {"value": self._get_value(data)}
 
     def deserialize(self, payload: dict[str, object]) -> dict[str, object]:
-        return {"value": self._get_value(payload)}
+        deserialized = dict(payload)
+        deserialized["value"] = self._get_value(payload)
+        return deserialized
 
     def render(self, payload: dict[str, object]) -> str:
         return self._get_value(payload)

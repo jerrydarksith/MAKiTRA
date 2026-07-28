@@ -1,2 +1,0 @@
-"""Personal information system package."""
-

@@ -9,6 +9,8 @@ from personal_bot.db.repositories.record_repository import RecordRepository
 from personal_bot.db.repositories.user_repository import UserRepository
 from personal_bot.db.schema import initialize_database_schema
 from personal_bot.records.registry import RecordRegistry, create_record_registry
+from personal_bot.records.service import RecordsService
+from personal_bot.records.types.short_text import ShortTextRecordType
 
 
 class RecordTypeStub:
@@ -151,6 +153,102 @@ class RecordInfrastructureTests(unittest.TestCase):
         self.assertIsNone(
             self.record_repository.get_by_id_and_owner(record.id, owner_user_id=1)
         )
+
+    def test_service_create_record_persists_after_reopening_database(self) -> None:
+        registry = create_record_registry()
+        registry.register("short_text", ShortTextRecordType())
+        records_service = RecordsService(self.record_repository, registry)
+
+        created_record = records_service.create_record(
+            owner_user_id=1,
+            folder_id=self.folder.id,
+            type_code="short_text",
+            name="Назва",
+            data={"value": "Привіт"},
+        )
+
+        self.database.close()
+
+        reopened_database = Database(self.database_path)
+        reopened_repository = RecordRepository(reopened_database)
+        fetched_record = reopened_repository.get_by_id_and_owner(created_record.id, owner_user_id=1)
+
+        self.assertIsNotNone(fetched_record)
+        self.assertEqual(fetched_record.name, "Назва")
+        self.assertEqual(fetched_record.payload, {"value": "Привіт"})
+
+        reopened_database.close()
+
+    def test_service_update_record_persists_new_name(self) -> None:
+        registry = create_record_registry()
+        registry.register("short_text", ShortTextRecordType())
+        records_service = RecordsService(self.record_repository, registry)
+
+        created_record = records_service.create_record(
+            owner_user_id=1,
+            folder_id=self.folder.id,
+            type_code="short_text",
+            name="Стара назва",
+            data={"value": "Привіт"},
+        )
+
+        updated_record = records_service.update_record(
+            record_id=created_record.id,
+            owner_user_id=1,
+            data={"name": "Нова назва", "value": "Привіт"},
+        )
+
+        self.assertEqual(updated_record.name, "Нова назва")
+
+        reopened_database = Database(self.database_path)
+        reopened_repository = RecordRepository(reopened_database)
+        fetched_record = reopened_repository.get_by_id_and_owner(created_record.id, owner_user_id=1)
+
+        self.assertIsNotNone(fetched_record)
+        self.assertEqual(fetched_record.name, "Нова назва")
+        reopened_database.close()
+
+    def test_service_update_record_preserves_custom_fields_after_reopen(self) -> None:
+        registry = create_record_registry()
+        registry.register("short_text", ShortTextRecordType())
+        records_service = RecordsService(self.record_repository, registry)
+
+        created_record = records_service.create_record(
+            owner_user_id=1,
+            folder_id=self.folder.id,
+            type_code="short_text",
+            name="Заміна масла",
+            data={"value": "Привіт"},
+        )
+
+        updated_record = records_service.update_record(
+            record_id=created_record.id,
+            owner_user_id=1,
+            data={
+                "value": "Привіт",
+                "fields": [
+                    {
+                        "id": "1:0",
+                        "type": "text",
+                        "name": "Пробіг",
+                        "value": "12223",
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(updated_record.payload["fields"][0]["value"], "12223")
+
+        reopened_record = records_service.get_record(created_record.id, owner_user_id=1)
+        self.assertIsNotNone(reopened_record)
+        self.assertEqual(reopened_record.payload["fields"][0]["value"], "12223")
+
+        reopened_database = Database(self.database_path)
+        reopened_repository = RecordRepository(reopened_database)
+        fetched_record = reopened_repository.get_by_id_and_owner(created_record.id, owner_user_id=1)
+        self.assertIsNotNone(fetched_record)
+        self.assertEqual(fetched_record.payload["fields"][0]["value"], "12223")
+        reopened_database.close()
 
     def test_registry_is_created_without_record_types(self) -> None:
         registry = create_record_registry()

@@ -1,2 +1,0 @@
-"""Access module callback handlers."""
-

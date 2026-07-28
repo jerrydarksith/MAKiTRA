@@ -3,6 +3,9 @@ from telegram import KeyboardButton, ReplyKeyboardMarkup
 from personal_bot.core.entities.folder import Folder
 
 
+# Folder menu helpers remain unchanged for folder actions.
+
+
 def get_folder_list_keyboard(folders: list[Folder]) -> ReplyKeyboardMarkup:
     return get_folder_main_keyboard(folders, [], is_root=True)
 
@@ -74,6 +77,23 @@ def get_folder_menu_keyboard(is_root: bool) -> ReplyKeyboardMarkup:
 def get_record_type_keyboard(type_codes: tuple[str, ...]) -> ReplyKeyboardMarkup:
     buttons = [[KeyboardButton(type_code)] for type_code in type_codes]
     buttons.append([KeyboardButton("⬅️ Назад")])
+    return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
+
+
+def get_field_type_keyboard() -> ReplyKeyboardMarkup:
+    buttons = [
+        [KeyboardButton("📝 Текст")],
+        [KeyboardButton("📄 Великий текст")],
+        [KeyboardButton("🔢 Число")],
+        [KeyboardButton("💰 Сума")],
+        [KeyboardButton("📅 Дата")],
+        [KeyboardButton("🕒 Дата і час")],
+        [KeyboardButton("📞 Телефон")],
+        [KeyboardButton("📧 Email")],
+        [KeyboardButton("🌐 Посилання")],
+        [KeyboardButton("✅ Так / Ні")],
+        [KeyboardButton("⬅️ Назад")],
+    ]
     return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
 
 

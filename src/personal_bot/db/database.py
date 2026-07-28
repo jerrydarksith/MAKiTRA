@@ -25,6 +25,9 @@ class Database:
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
+        if self._connection.in_transaction:
+            self._connection.commit()
+
         self._connection.execute("BEGIN IMMEDIATE")
 
         try:
