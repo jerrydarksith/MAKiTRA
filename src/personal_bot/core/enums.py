@@ -20,6 +20,7 @@ class AccessRequestStatus(str, Enum):
 
 class ContactRegistrationResult(str, Enum):
     FIRST_SUPER_ADMIN_CREATED = "first_super_admin_created"
+    AUTOMATIC_REGISTRATION_COMPLETED = "automatic_registration_completed"
     ACCESS_REQUEST_CREATED = "access_request_created"
     ACCESS_REQUEST_ALREADY_PENDING = "access_request_already_pending"
     USER_ALREADY_REGISTERED = "user_already_registered"

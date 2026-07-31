@@ -1,3 +1,5 @@
+import re
+
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -25,7 +27,37 @@ from personal_bot.objects.service import ObjectsService
 from personal_bot.records.registry import RecordRegistry
 from personal_bot.records.service import RecordsService
 from personal_bot.reminders.service import RemindersService
-from personal_bot.users.callback_handlers import UsersCallbackHandler, UsersMessageHandler
+from personal_bot.users.callback_handlers import UsersMessageHandler
+
+
+def get_admin_settings_menu_regex() -> str:
+    labels = [
+        "📝 Записи",
+        "⚙️ Налаштування",
+        "🛡 Адміністрування",
+        "👥 Користувачі",
+        "📨 Заявки",
+        "🟢 Реєстрація: Автоматична",
+        "🔴 Реєстрація: Через підтвердження",
+        "🟢 Повідомлення адміну: Увімкнено",
+        "🔴 Повідомлення адміну: Вимкнено",
+        "Режим реєстрації: Автоматична",
+        "Режим реєстрації: Через підтвердження",
+        "Повідомлення адміну: Увімкнено",
+        "Повідомлення адміну: Вимкнено",
+        "⬅️ Назад",
+        "⬅ Назад",
+        "⬅ Попередня",
+        "➡ Наступна",
+        "🗑 Видалити",
+        "🗑 Видалити користувача",
+        "🚫 Забанити",
+        "✅ Розбанити",
+        "✅ Так",
+        "❌ Ні",
+    ]
+    escaped_labels = [re.escape(label) for label in labels]
+    return rf"^(?:{'|'.join(escaped_labels)}|👥 Користувачі \(\d+\)|👤 .+)$"
 
 
 async def _dispatch_due_reminders(application: Application, reminders_service: RemindersService) -> None:
@@ -51,8 +83,7 @@ def create_telegram_application(
         AccessRequestNotificationSender(),
     )
     access_request_callback_handler = AccessRequestCallbackHandler(access_service)
-    users_message_handler = UsersMessageHandler(users_service)
-    users_callback_handler = UsersCallbackHandler(users_service)
+    users_message_handler = UsersMessageHandler(users_service, access_service)
     categories_message_handler = CategoriesMessageHandler(categories_service)
     categories_callback_handler = CategoriesCallbackHandler(categories_service)
     folders_message_handler = FoldersMessageHandler(
@@ -77,10 +108,7 @@ def create_telegram_application(
     )
     telegram_application.add_handler(
         MessageHandler(
-            filters.TEXT
-            & filters.Regex(
-                r"^📁 Папки$|^⚙️ Налаштування$|^🛡 Адміністрування$|^👥 Користувачі(?: \(\d+\))?$|^📨 Заявки$|^⬅ Назад$"
-            ),
+            filters.TEXT & filters.Regex(get_admin_settings_menu_regex()),
             users_message_handler.handle,
         )
     )
@@ -97,6 +125,9 @@ def create_telegram_application(
         )
     )
     telegram_application.add_handler(
+        MessageHandler(filters.TEXT, users_message_handler.handle)
+    )
+    telegram_application.add_handler(
         CallbackQueryHandler(
             access_request_callback_handler.handle,
             pattern=r"^access_request:(approve|reject):\d+$",
@@ -106,12 +137,6 @@ def create_telegram_application(
         lambda context: _dispatch_due_reminders(telegram_application, reminders_service),
         interval=60,
         first=0,
-    )
-    telegram_application.add_handler(
-        CallbackQueryHandler(
-            users_callback_handler.handle,
-            pattern=r"^users:(page|back):?.*$",
-        )
     )
     telegram_application.add_handler(
         CallbackQueryHandler(

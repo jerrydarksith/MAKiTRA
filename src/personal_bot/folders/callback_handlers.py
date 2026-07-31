@@ -44,18 +44,20 @@ class FoldersMessageFilter(filters.MessageFilter):
             "✏️ Перейменувати папку",
             "🗑️ Видалити папку",
             "🗑 Видалити папку",
-            "✅ Так",
-            "❌ Ні",
-            "⬅️ Назад",
-            "⬅ Назад",
             "⬅️ До папки",
             "◀️ Попередня",
             "▶️ Наступна",
             "🏠 Головне меню",
         }
 
-        if text == "⬅️ Назад":
-            return self._handler.is_active_session(user_id)
+        if text in {"⬅️ Назад", "⬅ Назад"}:
+            return self._handler.is_active_session(user_id) or user_id in self._handler._pending_action_for_user
+
+        if text in {"✅ Так", "❌ Ні"}:
+            return (
+                user_id in self._handler._pending_action_for_user
+                or user_id in self._handler._record_actions_for_user
+            )
 
         if text in command_texts or text.startswith("📁 ") or text.startswith("📝 "):
             return True
@@ -805,7 +807,7 @@ class FoldersMessageHandler:
             )
             return
 
-        if text == "�🗑️ Видалити папку":
+        if text == "🗑️ Видалити папку":
             folder_id = self._current_folder_id(user_id)
             if folder_id is None:
                 return
@@ -825,6 +827,7 @@ class FoldersMessageHandler:
                 f"Видалити папку \"{folder.name}\"?",
                 reply_markup=get_folder_delete_confirmation_keyboard(),
             )
+            self._pending_action_for_user[user_id] = "delete_folder"
             return
 
         if text == "🗑 Видалити запис":

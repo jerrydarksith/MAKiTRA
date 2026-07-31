@@ -45,6 +45,65 @@ class AccessService:
     def find_user_by_telegram_id(self, telegram_id: int) -> User | None:
         return self._user_repository.find_by_telegram_id(telegram_id)
 
+    def get_registration_mode(self) -> str:
+        return self._settings_repository.get_registration_mode()
+
+    def set_registration_mode(self, registration_mode: str) -> None:
+        self._settings_repository.set_registration_mode(registration_mode)
+
+    def get_notify_new_users(self) -> bool:
+        return self._settings_repository.get_notify_new_users()
+
+    def set_notify_new_users(self, enabled: bool) -> None:
+        self._settings_repository.set_notify_new_users(enabled)
+
+    def sync_user_profile(
+        self,
+        telegram_id: int,
+        *,
+        is_bot: bool,
+        username: str | None,
+        first_name: str,
+        last_name: str | None,
+        language_code: str | None,
+        is_premium: bool | None,
+        added_to_attachment_menu: bool | None,
+        can_join_groups: bool | None,
+        can_read_all_group_messages: bool | None,
+        supports_inline_queries: bool | None,
+        can_connect_to_business: bool | None,
+        has_main_web_app: bool | None,
+        has_topics_enabled: bool | None,
+        allows_users_to_create_topics: bool | None,
+        can_manage_bots: bool | None,
+        supports_guest_queries: bool | None,
+        phone_number: str | None = None,
+    ) -> None:
+        now = self._get_current_timestamp()
+        full_name = " ".join(part for part in (first_name, last_name) if part) or None
+        self._user_repository.update_telegram_profile(
+            telegram_id,
+            is_bot=is_bot,
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            language_code=language_code,
+            is_premium=is_premium,
+            added_to_attachment_menu=added_to_attachment_menu,
+            can_join_groups=can_join_groups,
+            can_read_all_group_messages=can_read_all_group_messages,
+            supports_inline_queries=supports_inline_queries,
+            can_connect_to_business=can_connect_to_business,
+            has_main_web_app=has_main_web_app,
+            has_topics_enabled=has_topics_enabled,
+            allows_users_to_create_topics=allows_users_to_create_topics,
+            can_manage_bots=can_manage_bots,
+            supports_guest_queries=supports_guest_queries,
+            full_name=full_name,
+            phone_number=phone_number,
+            last_activity_at=now,
+        )
+
     def register_contact(
         self,
         telegram_id: int,
@@ -52,6 +111,22 @@ class AccessService:
         first_name: str,
         last_name: str | None,
         phone_number: str,
+        is_bot: bool = False,
+        full_name: str | None = None,
+        timezone: str | None = None,
+        language_code: str | None = None,
+        is_premium: bool | None = None,
+        added_to_attachment_menu: bool | None = None,
+        allows_write_to_pm: bool | None = None,
+        can_join_groups: bool | None = None,
+        can_read_all_group_messages: bool | None = None,
+        supports_inline_queries: bool | None = None,
+        can_connect_to_business: bool | None = None,
+        has_main_web_app: bool | None = None,
+        has_topics_enabled: bool | None = None,
+        allows_users_to_create_topics: bool | None = None,
+        can_manage_bots: bool | None = None,
+        supports_guest_queries: bool | None = None,
     ) -> ContactRegistrationOutcome:
         created_at = self._get_current_timestamp()
 
@@ -59,6 +134,26 @@ class AccessService:
             existing_user = self._user_repository.find_by_telegram_id(telegram_id)
 
             if existing_user is not None:
+                self.sync_user_profile(
+                    telegram_id,
+                    is_bot=is_bot,
+                    username=username,
+                    first_name=first_name,
+                    last_name=last_name,
+                    language_code=language_code,
+                    is_premium=is_premium,
+                    added_to_attachment_menu=added_to_attachment_menu,
+                    can_join_groups=can_join_groups,
+                    can_read_all_group_messages=can_read_all_group_messages,
+                    supports_inline_queries=supports_inline_queries,
+                    can_connect_to_business=can_connect_to_business,
+                    has_main_web_app=has_main_web_app,
+                    has_topics_enabled=has_topics_enabled,
+                    allows_users_to_create_topics=allows_users_to_create_topics,
+                    can_manage_bots=can_manage_bots,
+                    supports_guest_queries=supports_guest_queries,
+                    phone_number=phone_number,
+                )
                 return ContactRegistrationOutcome(
                     result=ContactRegistrationResult.USER_ALREADY_REGISTERED
                 )
@@ -73,6 +168,22 @@ class AccessService:
                     role=UserRole.SUPER_ADMIN,
                     status=UserStatus.ACTIVE,
                     created_at=created_at,
+                    last_activity_at=created_at,
+                    is_bot=is_bot,
+                    full_name=full_name,
+                    timezone=timezone,
+                    language_code=language_code,
+                    is_premium=is_premium,
+                    added_to_attachment_menu=added_to_attachment_menu,
+                    allows_write_to_pm=allows_write_to_pm,
+                    can_join_groups=can_join_groups,
+                    can_read_all_group_messages=can_read_all_group_messages,
+                    supports_inline_queries=supports_inline_queries,
+                    can_connect_to_business=can_connect_to_business,
+                    has_main_web_app=has_main_web_app,
+                    allows_users_to_create_topics=allows_users_to_create_topics,
+                    can_manage_bots=can_manage_bots,
+                    supports_guest_queries=supports_guest_queries,
                 )
                 self._settings_repository.create_default(user_id, created_at)
                 return ContactRegistrationOutcome(
@@ -84,6 +195,41 @@ class AccessService:
                     result=ContactRegistrationResult.ACCESS_REQUEST_ALREADY_PENDING
                 )
 
+            registration_mode = self._settings_repository.get_registration_mode()
+            if registration_mode == "automatic":
+                user_id = self._user_repository.create(
+                    telegram_id=telegram_id,
+                    username=username,
+                    first_name=first_name,
+                    last_name=last_name,
+                    phone_number=phone_number,
+                    role=UserRole.USER,
+                    status=UserStatus.ACTIVE,
+                    created_at=created_at,
+                    last_activity_at=created_at,
+                    is_bot=is_bot,
+                    full_name=full_name,
+                    timezone=timezone,
+                    language_code=language_code,
+                    is_premium=is_premium,
+                    added_to_attachment_menu=added_to_attachment_menu,
+                    allows_write_to_pm=allows_write_to_pm,
+                    can_join_groups=can_join_groups,
+                    can_read_all_group_messages=can_read_all_group_messages,
+                    supports_inline_queries=supports_inline_queries,
+                    can_connect_to_business=can_connect_to_business,
+                    has_main_web_app=has_main_web_app,
+                    allows_users_to_create_topics=allows_users_to_create_topics,
+                    can_manage_bots=can_manage_bots,
+                    supports_guest_queries=supports_guest_queries,
+                )
+                self._settings_repository.create_default(user_id, created_at)
+                super_admins = self._user_repository.find_active_super_admins()
+                return ContactRegistrationOutcome(
+                    result=ContactRegistrationResult.AUTOMATIC_REGISTRATION_COMPLETED,
+                    super_admins=tuple(super_admins),
+                )
+
             access_request = self._access_request_repository.create_pending(
                 telegram_id=telegram_id,
                 username=username,
@@ -91,6 +237,20 @@ class AccessService:
                 last_name=last_name,
                 phone_number=phone_number,
                 created_at=created_at,
+                is_bot=is_bot,
+                full_name=full_name,
+                language_code=language_code,
+                is_premium=is_premium,
+                added_to_attachment_menu=added_to_attachment_menu,
+                can_join_groups=can_join_groups,
+                can_read_all_group_messages=can_read_all_group_messages,
+                supports_inline_queries=supports_inline_queries,
+                can_connect_to_business=can_connect_to_business,
+                has_main_web_app=has_main_web_app,
+                has_topics_enabled=has_topics_enabled,
+                allows_users_to_create_topics=allows_users_to_create_topics,
+                can_manage_bots=can_manage_bots,
+                supports_guest_queries=supports_guest_queries,
             )
             super_admins = self._user_repository.find_active_super_admins()
             return ContactRegistrationOutcome(
@@ -135,6 +295,20 @@ class AccessService:
                 role=UserRole.USER,
                 status=UserStatus.ACTIVE,
                 created_at=reviewed_at,
+                is_bot=access_request.is_bot,
+                full_name=access_request.full_name,
+                language_code=access_request.language_code,
+                is_premium=access_request.is_premium,
+                added_to_attachment_menu=access_request.added_to_attachment_menu,
+                can_join_groups=access_request.can_join_groups,
+                can_read_all_group_messages=access_request.can_read_all_group_messages,
+                supports_inline_queries=access_request.supports_inline_queries,
+                can_connect_to_business=access_request.can_connect_to_business,
+                has_main_web_app=access_request.has_main_web_app,
+                has_topics_enabled=access_request.has_topics_enabled,
+                allows_users_to_create_topics=access_request.allows_users_to_create_topics,
+                can_manage_bots=access_request.can_manage_bots,
+                supports_guest_queries=access_request.supports_guest_queries,
             )
             self._settings_repository.create_default(user_id, reviewed_at)
             self._access_request_repository.mark_reviewed(

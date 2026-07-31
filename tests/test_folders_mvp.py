@@ -145,6 +145,11 @@ class FoldersHandlerMVPTTests(unittest.IsolatedAsyncioTestCase):
     def _make_update(self, text: str) -> FakeUpdate:
         return FakeUpdate(FakeMessage(text, user_id=1))
 
+    def test_back_button_outside_folder_flow_is_not_consumed_by_folder_handler(self) -> None:
+        message = SimpleNamespace(text="⬅ Назад", from_user=SimpleNamespace(id=1))
+
+        self.assertFalse(self.handler.get_filter().filter(message))
+
     async def test_open_folder_list_shows_reply_keyboard(self) -> None:
         update = self._make_update("📝 Записи")
 
